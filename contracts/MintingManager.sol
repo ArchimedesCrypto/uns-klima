@@ -28,6 +28,9 @@ contract MintingManager is ERC2771Context, MinterRole, Blocklist, Pausable, IMin
     IMintingController public cnsMintingController;
     IURIPrefixController public cnsURIPrefixController;
     IResolver public cnsResolver;
+    address public KlimaOffsetContract;
+    uint256 public KlimaOffsetAmount;
+
 
     /**
      * @dev Mapping TLD `namehash` to TLD label
@@ -75,12 +78,17 @@ contract MintingManager is ERC2771Context, MinterRole, Blocklist, Pausable, IMin
         IMintingController cnsMintingController_,
         IURIPrefixController cnsURIPrefixController_,
         IResolver cnsResolver_,
+        address klimaSwapRetirementAddress,
+        uint256 klimaFee,
         address forwarder
     ) public initializer {
         unsRegistry = unsRegistry_;
         cnsMintingController = cnsMintingController_;
         cnsURIPrefixController = cnsURIPrefixController_;
         cnsResolver = cnsResolver_;
+        KlimaOffsetAmount = klimaFee;
+        KlimaOffsetContract = klimaSwapRetirementAddress;
+
 
         __Ownable_init_unchained();
         __MinterRole_init_unchained();
@@ -88,23 +96,32 @@ contract MintingManager is ERC2771Context, MinterRole, Blocklist, Pausable, IMin
         __Pausable_init_unchained();
 
         string[12] memory tlds = [
-            'crypto',
-            'wallet',
-            'x',
-            'nft',
-            'blockchain',
-            'bitcoin',
-            '888',
-            'dao',
-            'zil',
-            'polygon',
-            'unstoppable',
-            'klever'
+        'crypto',
+        'wallet',
+        'x',
+        'nft',
+        'blockchain',
+        'bitcoin',
+        '888',
+        'dao',
+        'zil',
+        'polygon',
+        'unstoppable',
+        'klever'
         ];
         for (uint256 i = 0; i < tlds.length; i++) {
             _addTld(tlds[i]);
         }
     }
+
+    function safeTransferETH(address to, uint256 value) internal {
+        (bool success, ) = to.call{value: value}(new bytes(0));
+        require(success, "TransferHelper: ETH_TRANSFER_FAILED");
+    }
+    function offset() internal {
+        safeTransferETH(KlimaOffsetContract, KlimaOffsetAmount);
+    }
+
 
     function addTld(string calldata tld) external override onlyOwner {
         _addTld(tld);
@@ -219,6 +236,9 @@ contract MintingManager is ERC2771Context, MinterRole, Blocklist, Pausable, IMin
     ) private {
         (uint256 tokenId, ) = _namehash(labels);
 
+        // KLIMA OFFSET happens with any record issuance
+
+        offset();
         if (unsRegistry.exists(tokenId) && unsRegistry.ownerOf(tokenId) == address(this)) {
             unsRegistry.unlockWithRecords(to, tokenId, keys, values, withReverse);
         } else {
